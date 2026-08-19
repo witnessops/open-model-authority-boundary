@@ -1,0 +1,22 @@
+version: 1
+default: DENY
+actions:
+  search_knowledge:
+    authority: READ
+    execution: AUTO
+  create_contact_request:
+    authority: WRITE_LOW
+    execution: AUTO
+  request_human:
+    authority: ESCALATE
+    execution: AUTO
+  delete_customer_data:
+    authority: HIGH
+    execution: HUMAN_ONLY
+forbidden_capabilities:
+  - arbitrary_http
+  - shell_execution
+  - production_mutation
+  - arbitrary_email
+  - infrastructure_change
+  - commercial_term_invention

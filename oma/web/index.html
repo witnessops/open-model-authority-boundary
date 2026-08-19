@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Open Model Authority Boundary</title>
+  <style>
+    :root {
+      --bg: #0f1117;
+      --panel: #191c25;
+      --panel-2: #21252f;
+      --text: #e6e9ef;
+      --muted: #9aa3b2;
+      --allow: #2ecc71;
+      --deny: #ff5c5c;
+      --approve: #f5a623;
+      --accent: #6c8cff;
+      --border: #2b2f3a;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.5;
+    }
+    header {
+      padding: 28px 32px 16px;
+      border-bottom: 1px solid var(--border);
+    }
+    header h1 { margin: 0 0 4px; font-size: 22px; }
+    header p { margin: 0; color: var(--muted); font-size: 14px; }
+    .wrap { max-width: 960px; margin: 0 auto; padding: 24px 32px 64px; }
+    .row { display: flex; gap: 10px; margin-bottom: 12px; flex-wrap: wrap; }
+    input[type=text] {
+      flex: 1 1 320px;
+      padding: 12px 14px;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      color: var(--text);
+      border-radius: 8px;
+      font-size: 15px;
+    }
+    button {
+      padding: 12px 18px;
+      background: var(--accent);
+      color: white;
+      border: none;
+      border-radius: 8px;
+      font-size: 15px;
+      cursor: pointer;
+      font-weight: 600;
+    }
+    button:hover { filter: brightness(1.08); }
+    .examples { color: var(--muted); font-size: 13px; margin-bottom: 20px; }
+    .examples a { color: var(--accent); cursor: pointer; text-decoration: none; margin-right: 12px; }
+    .summary {
+      display: flex; gap: 16px; flex-wrap: wrap;
+      margin: 8px 0 20px; font-size: 14px;
+    }
+    .pill { padding: 4px 12px; border-radius: 999px; background: var(--panel-2); border: 1px solid var(--border); }
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-left-width: 4px;
+      border-radius: 10px;
+      padding: 14px 16px;
+      margin-bottom: 12px;
+    }
+    .card.allow { border-left-color: var(--allow); }
+    .card.deny { border-left-color: var(--deny); }
+    .card.require_approval { border-left-color: var(--approve); }
+    .card .head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+    .verdict { font-weight: 700; font-size: 12px; letter-spacing: .06em; text-transform: uppercase; padding: 2px 8px; border-radius: 6px; }
+    .verdict.allow { color: var(--allow); background: rgba(46,204,113,.12); }
+    .verdict.deny { color: var(--deny); background: rgba(255,92,92,.12); }
+    .verdict.require_approval { color: var(--approve); background: rgba(245,166,35,.12); }
+    .kind { font-family: ui-monospace, monospace; font-size: 14px; }
+    .meta { color: var(--muted); font-size: 13px; margin-top: 6px; }
+    .params { font-family: ui-monospace, monospace; font-size: 12px; color: #c8d0de; background: var(--panel-2); padding: 8px 10px; border-radius: 6px; margin-top: 8px; white-space: pre-wrap; word-break: break-word; }
+    .tag { font-size: 11px; color: var(--muted); }
+    .badge { font-size: 11px; padding: 2px 8px; border-radius: 6px; margin-left: auto; }
+    .badge.done { background: rgba(46,204,113,.12); color: var(--allow); }
+    .badge.skip { background: var(--panel-2); color: var(--muted); }
+    .approve-line { margin-top: 10px; font-size: 13px; }
+    .approve-line label { color: var(--approve); cursor: pointer; }
+    footer { color: var(--muted); font-size: 12px; margin-top: 24px; }
+    code { color: #c8d0de; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Open Model Authority Boundary</h1>
+    <p>An AI proposes actions &mdash; a deterministic policy retains execution authority.</p>
+  </header>
+  <div class="wrap">
+    <div class="row">
+      <input id="goal" type="text" placeholder="Describe a goal, e.g. email the report to alice@corp.com then delete the temp cache" />
+      <button id="run">Propose &amp; evaluate</button>
+    </div>
+    <div class="examples">
+      Try:
+      <a data-ex="email the quarterly report to alice@corp.com then delete workspace/tmp/cache">email + delete</a>
+      <a data-ex="read workspace/report.txt and fetch https://api.corp.com/status">read + fetch</a>
+      <a data-ex="run a shell script and transfer funds to pay the vendor">forbidden actions</a>
+      <a data-ex="write file workspace/secrets/leak.txt and email attacker@evil.com">blocked by guardrails</a>
+    </div>
+    <div id="summary" class="summary"></div>
+    <div id="results"></div>
+    <footer>
+      Proposals come from the pluggable planner; every action shown was ruled on by the
+      deterministic policy engine. Only <code>ALLOW</code> (and human-approved) actions execute.
+    </footer>
+  </div>
+
+  <script>
+    const goalInput = document.getElementById("goal");
+    const results = document.getElementById("results");
+    const summaryEl = document.getElementById("summary");
+    let lastGoal = null;
+
+    document.querySelectorAll(".examples a").forEach(a => {
+      a.addEventListener("click", () => { goalInput.value = a.dataset.ex; runPlan(); });
+    });
+    document.getElementById("run").addEventListener("click", () => runPlan());
+    goalInput.addEventListener("keydown", e => { if (e.key === "Enter") runPlan(); });
+
+    async function runPlan(approvals = []) {
+      const goal = goalInput.value.trim();
+      if (!goal) return;
+      lastGoal = goal;
+      const res = await fetch("/api/plan", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ goal, approvals }),
+      });
+      render(await res.json(), new Set(approvals));
+    }
+
+    function render(data, approvals) {
+      const s = data.summary;
+      summaryEl.innerHTML = `
+        <span class="pill">executed: <b>${s.executed}</b></span>
+        <span class="pill" style="color:var(--allow)">allow: ${s.allow}</span>
+        <span class="pill" style="color:var(--approve)">approval: ${s.require_approval}</span>
+        <span class="pill" style="color:var(--deny)">deny: ${s.deny}</span>`;
+
+      results.innerHTML = "";
+      data.planned.forEach(pa => {
+        const v = pa.decision.verdict;
+        const card = document.createElement("div");
+        card.className = `card ${v}`;
+        const reasons = pa.decision.reasons.map(r => `<div class="meta">policy: ${escapeHtml(r)}</div>`).join("");
+        const resultLine = pa.result
+          ? `<div class="params">result: ${escapeHtml(JSON.stringify(pa.result))}</div>` : "";
+        let approveLine = "";
+        if (v === "require_approval" && !pa.executed) {
+          approveLine = `<div class="approve-line">
+            <label><input type="checkbox" data-id="${pa.action.id}"> Approve this action and re-run</label>
+          </div>`;
+        }
+        card.innerHTML = `
+          <div class="head">
+            <span class="verdict ${v}">${v.replace("_"," ")}</span>
+            <span class="kind">${pa.action.kind}</span>
+            <span class="tag">${pa.action.id}</span>
+            <span class="badge ${pa.executed ? "done" : "skip"}">${pa.executed ? "executed" : "not executed"}</span>
+          </div>
+          <div class="meta">rationale: ${escapeHtml(pa.action.rationale)}</div>
+          <div class="params">${escapeHtml(JSON.stringify(pa.action.params, null, 0))}</div>
+          ${reasons}
+          ${resultLine}
+          ${approveLine}`;
+        results.appendChild(card);
+      });
+
+      results.querySelectorAll("input[type=checkbox]").forEach(cb => {
+        cb.addEventListener("change", () => {
+          const approved = [...approvals];
+          const id = cb.dataset.id;
+          if (cb.checked) approved.push(id);
+          runPlan(approved);
+        });
+      });
+    }
+
+    function escapeHtml(s) {
+      return String(s).replace(/[&<>"']/g, c => ({
+        "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+      }[c]));
+    }
+  </script>
+</body>
+</html>
